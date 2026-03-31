@@ -34,7 +34,7 @@ TLV493DDatarates = {
 
 
 field_strength_schema = sensor.sensor_schema(
-    unit_of_measurement=,
+    unit_of_measurement="µT",
     icon=ICON_MAGNET,
     accuracy_decimals=1,
     state_class=STATE_CLASS_MEASUREMENT,
