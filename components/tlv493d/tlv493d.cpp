@@ -124,20 +124,6 @@ void TLV493DComponent::update() {
     this->ema_z_ = z;
   }
 
-  // Gate publishes: only fire on_raw_value (and the tronikos detection algorithm)
-  // when the field has changed by at least min_publish_delta_ µT since last publish.
-  // This prevents quantization noise (1 LSB = 98 µT) from generating false counts.
-  if (this->min_publish_delta_ > 0.0f && !std::isnan(this->last_published_x_)) {
-    if (std::abs(this->ema_x_ - this->last_published_x_) < this->min_publish_delta_ &&
-        std::abs(this->ema_y_ - this->last_published_y_) < this->min_publish_delta_ &&
-        std::abs(this->ema_z_ - this->last_published_z_) < this->min_publish_delta_) {
-      return;
-    }
-  }
-  this->last_published_x_ = this->ema_x_;
-  this->last_published_y_ = this->ema_y_;
-  this->last_published_z_ = this->ema_z_;
-
   if (this->x_sensor_ != nullptr) this->x_sensor_->publish_state(this->ema_x_);
   if (this->y_sensor_ != nullptr) this->y_sensor_->publish_state(this->ema_y_);
   if (this->z_sensor_ != nullptr) this->z_sensor_->publish_state(this->ema_z_);
@@ -153,7 +139,6 @@ void TLV493DComponent::update() {
     this->magnitude_sensor_->publish_state(magnitude);
   }
 
-  // Temperature is published unconditionally (not gated by min_publish_delta).
   if (this->temperature_sensor_ != nullptr) {
     this->temperature_sensor_->publish_state(temp_c);
   }
