@@ -29,6 +29,7 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
  protected:
   TLV493DDatarate datarate_{TLV493D_DATARATE_75_0_HZ};
   uint8_t config_[3] = {0x05, 0x00, 0x00};
+  uint8_t last_frame_counter_{0xFF};  // 0xFF = sentinel (no previous read)
   sensor::Sensor *x_sensor_{nullptr};
   sensor::Sensor *y_sensor_{nullptr};
   sensor::Sensor *z_sensor_{nullptr};

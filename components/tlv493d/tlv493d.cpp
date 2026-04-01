@@ -20,17 +20,17 @@ void TLV493DComponent::setup() {
 
   ESP_LOGD(TAG, "TLV493D factory bytes[7..9]: %02X %02X %02X", factory_data[7], factory_data[8], factory_data[9]);
 
-  // 2. Build write buffer for Master Controlled Mode (MCM: FAST=1, LOWPOWER=1).
+  // 2. Build write buffer for Low Power mode (autonomous, ~10 Hz).
   //
-  // The TLV493D-A1B6 requires a 4-byte I2C write (per Adafruit + Infineon protocol):
-  //   Wire byte 0: 0x00     (always zero — leading protocol byte, carries no config)
-  //   Wire byte 1: config[0] = FP(7)=1 | ADDR(6:5) | RES1(4:3) | INT(2)=0 | FAST(1)=1 | LP(0)=1
-  //   Wire byte 2: config[1] = RES2 = factory_data[8] verbatim
-  //   Wire byte 3: config[2] = RES3 = factory_data[9] bits[4:0]
+  // MCM (FAST=1, LOWPOWER=1) requires a pure I2C START to trigger each conversion.
+  // ESPHome's read_bytes() issues a repeated-start (not a fresh START), which the
+  // sensor does not treat as an MCM trigger — leaving FRAMECOUNTER frozen.
+  // Low Power mode (FAST=0, LOWPOWER=1) measures autonomously at ~10 Hz so
+  // ESPHome can simply read the latest result whenever it polls.
   //
-  // write_bytes(0x00, config_, 3) sends exactly [0x00, config_[0], config_[1], config_[2]].
-  // FP (bit 7 of wire byte 1) is set to 1, matching Adafruit and avjui reference implementations.
-  this->config_[0] = (factory_data[7] & 0x18) | 0x83;  // RES1 | FP=1 | FAST=1 | LOWPOWER=1
+  // 4-byte write frame: [0x00, MOD1, RES2, RES3]
+  //   MOD1: FP(7)=1 | ADDR(6:5)=0 | RES1(4:3) | INT(2)=0 | FAST(1)=0 | LP(0)=1
+  this->config_[0] = (factory_data[7] & 0x18) | 0x81;  // RES1 | FP=1 | FAST=0 | LOWPOWER=1
   this->config_[1] = factory_data[8];                    // RES2: must be preserved verbatim
   this->config_[2] = factory_data[9] & 0x1F;             // RES3: lower 5 bits only
 
@@ -44,7 +44,7 @@ void TLV493DComponent::setup() {
     return;
   }
 
-  ESP_LOGD(TAG, "TLV493D setup complete (Master Controlled Mode)");
+  ESP_LOGD(TAG, "TLV493D setup complete (Low Power autonomous mode)");
 }
 
 void TLV493DComponent::dump_config() {
@@ -75,8 +75,14 @@ void TLV493DComponent::update() {
   // Byte 3: TEMP1[7:4] | FRAMECOUNTER[3:2] | CHANNEL[1:0]
   // Byte 4: Bx[3:0] (high nibble) | By[3:0] (low nibble)
   // Byte 5: flags[7:4] | Bz[3:0] (low nibble)
-  //
-  // In Master Controlled Mode every pure read triggers and returns a fresh measurement.
+
+  // Check FRAMECOUNTER (bits 3:2 of byte 3) to detect stale data.
+  uint8_t frame = (data[3] & 0x0C) >> 2;
+  if (frame == this->last_frame_counter_) {
+    ESP_LOGV(TAG, "Stale data (FC=%d unchanged), skipping", frame);
+    return;
+  }
+  this->last_frame_counter_ = frame;
 
   ESP_LOGV(TAG, "Raw: %02X %02X %02X %02X %02X %02X (frame/ch=0x%02X)",
            data[0], data[1], data[2], data[3], data[4], data[5], data[3]);
