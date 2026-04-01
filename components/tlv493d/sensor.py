@@ -20,12 +20,10 @@ DEPENDENCIES = ["i2c"]
 
 tlv493d_ns = cg.esphome_ns.namespace("tlv493d")
 
-# FIXED: Changed MMC5603Component to TLV493DComponent
 TLV493DComponent = tlv493d_ns.class_(
     "TLV493DComponent", cg.PollingComponent, i2c.I2CDevice
 )
 
-# FIXED: Changed MMC5603Datarate to TLV493DDatarate
 TLV493DDatarate = tlv493d_ns.enum("TLV493DDatarate")
 TLV493DDatarates = {
     75: TLV493DDatarate.TLV493D_DATARATE_75_0_HZ,
