@@ -27,7 +27,8 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
   void set_heading_sensor(sensor::Sensor *heading_sensor) { heading_sensor_ = heading_sensor; }
 
  protected:
-  TLV493DDatarate datarate_;
+  TLV493DDatarate datarate_{TLV493D_DATARATE_75_0_HZ};
+  uint8_t config_[3] = {0x05, 0x00, 0x00};
   sensor::Sensor *x_sensor_{nullptr};
   sensor::Sensor *y_sensor_{nullptr};
   sensor::Sensor *z_sensor_{nullptr};
