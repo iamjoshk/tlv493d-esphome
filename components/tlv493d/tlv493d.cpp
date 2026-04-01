@@ -11,7 +11,7 @@ void TLV493DComponent::setup() {
   ESP_LOGCONFIG(TAG, "Setting up TLV493D...");
   
   // 1. Read factory trimming bits (Registers 7, 8, 9)
-  // We read 10 bytes starting from 0x00 to ensure we capture everything
+  // We read 10 bytes starting from 0x00.
   uint8_t factory_data[10];
   if (!this->read_bytes(0x00, factory_data, 10)) {
       this->error_code_ = COMMUNICATION_FAILED;
@@ -20,24 +20,23 @@ void TLV493DComponent::setup() {
   }
 
   // 2. Prepare Configuration
-  // The TLV493D-A1B6 expects a raw write of MOD1, MOD2, and MOD3
+  // Byte 0: MOD1, Byte 1: MOD2, Byte 2: MOD3
   uint8_t config[3];
   
-  // Byte 0 (MOD1): 0x05 
-  // Bits 0-1: 01 (Low Power Mode)
-  // Bit 2: 1 (Master Controlled Mode - recommended for stability)
-  // Bit 7: Parity bit (Must be 0 for this specific configuration)
+  // MOD1: 0x05 
+  // Master Controlled Mode, Low Power. 
+  // Parity bit (Bit 7) must be calculated. For 0x05, parity is 0.
   config[0] = 0x05; 
 
-  // Byte 1 (MOD2): Factory Reserved (From Register 8)
+  // MOD2: Factory Reserved (From Register 8)
   config[1] = factory_data[8];
 
-  // Byte 2 (MOD3): Factory Reserved (From Register 9)
+  // MOD3: Factory Reserved (From Register 9)
   config[2] = factory_data[9];
 
   // 3. Perform RAW Write (No register address)
-  // This sends the 3 config bytes directly after the I2C address
-  if (!this->write_bytes_raw(config, 3)) {
+  // Fixed: Use 'write' instead of 'write_bytes_raw'
+  if (!this->write(config, 3)) {
       ESP_LOGE(TAG, "Failed to send initialization command (NACK)!");
       this->error_code_ = COMMUNICATION_FAILED;
       this->mark_failed();
@@ -68,7 +67,7 @@ void TLV493DComponent::update() {
     return;
   }
 
-  // 12-bit signed conversion for A1B6
+  // 12-bit signed conversion for TLV493D-A1B6
   int16_t raw_x = (int16_t)((data[0] << 4) | (data[4] >> 4));
   if (raw_x & 0x0800) raw_x |= 0xF000; 
 
@@ -78,7 +77,7 @@ void TLV493DComponent::update() {
   int16_t raw_z = (int16_t)((data[2] << 4) | (data[5] & 0x0F));
   if (raw_z & 0x0800) raw_z |= 0xF000;
 
-  // Sensitivity: 98.0 uT per LSB
+  // Sensitivity: 98.0 uT per LSB (approx 0.098 mT)
   float x = raw_x * 98.0f;
   float y = raw_y * 98.0f;
   float z = raw_z * 98.0f;
