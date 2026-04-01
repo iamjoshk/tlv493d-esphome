@@ -1,0 +1,37 @@
+---
+# Drop-in override for tronikos/esphome-magnetometer-water-gas-meter
+# that replaces the QMC5883L sensor with the TLV493D-A1B6.
+#
+# Usage:
+#   packages:
+#     meter:
+#       url: https://github.com/tronikos/esphome-magnetometer-water-gas-meter
+#       ref: main
+#       file: esphome-water-meter.yaml
+#     tlv493d:
+#       url: https://github.com/iamjoshk/tlv493d-esphome
+#       ref: main
+#       file: tlv493d-water-meter.yaml
+#       refresh: 0s
+
+substitutions:
+  # TLV493D in Low Power mode measures at ~83 Hz internally.
+  # 50ms gives 20 polls/second — more than enough for fast-spinning meters.
+  # The tronikos default is 5ms (QMC5883L can do 200 Hz); 50ms is fine for TLV493D.
+  qmc5883l_update_interval: '50ms'
+  i2c_address: '0x5E'
+
+external_components:
+  - source: github://iamjoshk/tlv493d-esphome
+    components: [tlv493d]
+    refresh: 0s
+
+logger:
+  logs:
+    tlv493d: INFO
+
+sensor:
+  - id: !extend ${prefix_id}qmc5883l_id
+    platform: tlv493d
+    # Remove QMC5883L-only temperature sub-sensor (tlv493d does not expose it here)
+    temperature: !remove ${prefix_id}qmc5883l_temperature
