@@ -101,17 +101,21 @@ void TLV493DComponent::update() {
   float y = raw_y * 98.0f;
   float z = raw_z * 98.0f;
 
-  // Apply EMA smoothing to reduce ±1 LSB (98 µT) quantization noise before publishing.
-  // on_raw_value in ESPHome fires from publish_state(), so the tronikos detection
-  // algorithm sees these smoothed values directly.
-  if (std::isnan(this->ema_x_)) {
+  // Apply EMA smoothing when configured (alpha > 0). Raw passthrough when alpha == 0.
+  if (this->ema_alpha_ > 0.0f) {
+    if (std::isnan(this->ema_x_)) {
+      this->ema_x_ = x;
+      this->ema_y_ = y;
+      this->ema_z_ = z;
+    } else {
+      this->ema_x_ = this->ema_alpha_ * x + (1.0f - this->ema_alpha_) * this->ema_x_;
+      this->ema_y_ = this->ema_alpha_ * y + (1.0f - this->ema_alpha_) * this->ema_y_;
+      this->ema_z_ = this->ema_alpha_ * z + (1.0f - this->ema_alpha_) * this->ema_z_;
+    }
+  } else {
     this->ema_x_ = x;
     this->ema_y_ = y;
     this->ema_z_ = z;
-  } else {
-    this->ema_x_ = EMA_ALPHA * x + (1.0f - EMA_ALPHA) * this->ema_x_;
-    this->ema_y_ = EMA_ALPHA * y + (1.0f - EMA_ALPHA) * this->ema_y_;
-    this->ema_z_ = EMA_ALPHA * z + (1.0f - EMA_ALPHA) * this->ema_z_;
   }
 
   if (this->x_sensor_ != nullptr) this->x_sensor_->publish_state(this->ema_x_);

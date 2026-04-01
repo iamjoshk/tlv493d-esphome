@@ -36,5 +36,6 @@ i2c:
 sensor:
   - id: !extend ${prefix_id}qmc5883l_id
     platform: tlv493d
+    smoothing_factor: 20%
     # Remove QMC5883L-only temperature sub-sensor (tlv493d does not expose it here)
     temperature: !remove ${prefix_id}qmc5883l_temperature

@@ -21,6 +21,7 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
   void update() override;
 
   void set_datarate(TLV493DDatarate datarate) { datarate_ = datarate; }
+  void set_smoothing_factor(float alpha) { ema_alpha_ = alpha; }
   void set_x_sensor(sensor::Sensor *x_sensor) { x_sensor_ = x_sensor; }
   void set_y_sensor(sensor::Sensor *y_sensor) { y_sensor_ = y_sensor; }
   void set_z_sensor(sensor::Sensor *z_sensor) { z_sensor_ = z_sensor; }
@@ -31,12 +32,12 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
   TLV493DDatarate datarate_{TLV493D_DATARATE_75_0_HZ};
   uint8_t config_[3] = {0x05, 0x00, 0x00};
   uint8_t last_frame_counter_{0xFF};  // 0xFF = sentinel (no previous read)
-  // EMA smoothing (alpha=0.2) applied before publish to reduce ±1LSB (98µT) quantization noise.
-  // This ensures the tronikos on_raw_value detection algorithm sees smooth values.
+  // EMA smoothing. alpha=0.0 means raw passthrough (default). alpha=0.2 recommended
+  // when used with the tronikos water/gas meter detection framework.
+  float ema_alpha_{0.0f};
   float ema_x_{NAN};
   float ema_y_{NAN};
   float ema_z_{NAN};
-  static constexpr float EMA_ALPHA = 0.2f;
   sensor::Sensor *x_sensor_{nullptr};
   sensor::Sensor *y_sensor_{nullptr};
   sensor::Sensor *z_sensor_{nullptr};
