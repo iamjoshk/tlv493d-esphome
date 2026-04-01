@@ -60,11 +60,10 @@ float TLV493DComponent::get_setup_priority() const {
 void TLV493DComponent::update() {
   uint8_t data[6];
   // Read 6 bytes to get X, Y, Z, status and low nibbles.
-  // In Master Controlled Mode the I2C read transaction itself triggers the next
-  // conversion, so we must issue a pure read (no preceding register-address write).
-  // Using read_bytes(0x00, ...) would send a WRITE(0x00) before the read, which
-  // disrupts the MCM trigger and leaves the FRAMECOUNTER frozen.
-  if (!this->read(data, 6)) {
+  // The TLV493D requires a preceding 0x00 register-address byte before every read.
+  // Pure read() with 0 write bytes NACKs on this device via ESPHome's I2C IDF backend.
+  // read_bytes(0x00, ...) sends [WRITE 0x00][READ], which the sensor ACKs and returns data.
+  if (!this->read_bytes(0x00, data, 6)) {
     ESP_LOGW(TAG, "Read failed!");
     return;
   }
