@@ -15,9 +15,6 @@
 #       refresh: 0s
 
 substitutions:
-  # TLV493D in Low Power mode measures at ~83 Hz internally.
-  # 50ms gives 20 polls/second — more than enough for fast-spinning meters.
-  # The tronikos default is 5ms (QMC5883L can do 200 Hz); 50ms is fine for TLV493D.
   qmc5883l_update_interval: '50ms'
   i2c_address: '0x5E'
 
@@ -29,6 +26,12 @@ external_components:
 logger:
   logs:
     tlv493d: INFO
+
+i2c:
+  - id: !extend ${prefix_id}i2c_bus
+    frequency: 100kHz
+    sda_pullup_enabled: true
+    scl_pullup_enabled: true
 
 sensor:
   - id: !extend ${prefix_id}qmc5883l_id
