@@ -20,67 +20,28 @@ void TLV493DComponent::setup() {
 
   ESP_LOGD(TAG, "TLV493D factory bytes[7..9]: %02X %02X %02X", factory_data[7], factory_data[8], factory_data[9]);
 
-  // 2. Prepare Configuration for Master Controlled Mode (MCM).
-  // In MCM (FAST=1, LOWPOWER=1) the sensor takes a fresh measurement on every
-  // I2C read, so no data-ready polling is needed.
+  // 2. Build write buffer for Master Controlled Mode (MCM: FAST=1, LOWPOWER=1).
   //
-  // Register layout (TLV493D-A1B6 User Manual, Table 2):
-  //   MOD1 = config[0]: FP(7) | ADDR(6:5) | RES1(4:3) | INT(2) | FAST(1) | LOWPOWER(0)
-  //   MOD2 = config[1]: factory_data[8] (must be preserved verbatim)
-  //   MOD3 = config[2]: factory_data[9] bits [4:0] (lower 5 bits only)
-  uint8_t res1_bits = (factory_data[7] & 0x18);  // bits 4:3, keep in position
-  this->config_[0] = res1_bits | 0x03;            // RES1 | FAST=1 | LOWPOWER=1
-  this->config_[1] = factory_data[8];             // MOD2: reserved, must be preserved
-  this->config_[2] = (factory_data[9] & 0x1F) | 0x20;  // MOD3: reserved bits [4:0] + PT=1 (parity test enable, bit 5)
+  // The TLV493D-A1B6 requires a 4-byte I2C write (per Adafruit + Infineon protocol):
+  //   Wire byte 0: 0x00     (always zero — leading protocol byte, carries no config)
+  //   Wire byte 1: config[0] = FP(7)=1 | ADDR(6:5) | RES1(4:3) | INT(2)=0 | FAST(1)=1 | LP(0)=1
+  //   Wire byte 2: config[1] = RES2 = factory_data[8] verbatim
+  //   Wire byte 3: config[2] = RES3 = factory_data[9] bits[4:0]
+  //
+  // write_bytes(0x00, config_, 3) sends exactly [0x00, config_[0], config_[1], config_[2]].
+  // FP (bit 7 of wire byte 1) is set to 1, matching Adafruit and avjui reference implementations.
+  this->config_[0] = (factory_data[7] & 0x18) | 0x83;  // RES1 | FP=1 | FAST=1 | LOWPOWER=1
+  this->config_[1] = factory_data[8];                    // RES2: must be preserved verbatim
+  this->config_[2] = factory_data[9] & 0x1F;             // RES3: lower 5 bits only
 
-  // 3. Compute even parity over all 23 non-parity bits and set bit 7 of config[0].
-  uint8_t parity = 0;
-  for (int i = 0; i < 3; i++) {
-    for (int bit = 0; bit < 8; bit++) {
-      if (i == 0 && bit == 7) continue;  // skip parity bit itself
-      if ((this->config_[i] >> bit) & 0x01) parity++;
-    }
-  }
-  if (parity % 2 != 0) {
-    this->config_[0] |= 0x80;  // set FP to achieve even parity
-  }
+  ESP_LOGD(TAG, "TLV493D config: %02X %02X %02X", this->config_[0], this->config_[1], this->config_[2]);
 
-  ESP_LOGD(TAG, "TLV493D config: %02X %02X %02X (parity=%s)",
-           this->config_[0], this->config_[1], this->config_[2],
-           (this->config_[0] & 0x80) ? "1" : "0");
-
-  // 4. Write configuration: 3-byte raw write (MOD1, MOD2, MOD3) with no register
-  //    address prefix byte. A leading 0x00 would be parsed by the sensor as
-  //    MOD1=0x00 (power-down), so write() must be used here, not write_bytes().
-  bool write_ok = false;
-  for (int attempt = 1; attempt <= 3; attempt++) {
-    if (this->write(this->config_, 3)) {
-      write_ok = true;
-      break;
-    }
-    ESP_LOGW(TAG, "Config write attempt %d NACK, retrying...", attempt);
-  }
-  if (!write_ok) {
-    // Fallback: zero out reserved bytes, keep MOD1 (mode + parity).
-    uint8_t fallback[3] = {this->config_[0], 0x00, 0x00};
-    ESP_LOGW(TAG, "Trying fallback config: %02X 00 00", fallback[0]);
-    if (!this->write(fallback, 3)) {
-      ESP_LOGE(TAG, "Configuration write failed (NACK) after retries!");
-      this->error_code_ = COMMUNICATION_FAILED;
-      this->mark_failed();
-      return;
-    }
-  }
-
-  // 5. Read back and verify the parity check bit (bit 5 of read byte 5 = 0x20).
-  //    If zero, the sensor rejected the config write.
-  uint8_t verify[10];
-  if (this->read(verify, 10)) {
-    if (verify[5] & 0x20) {
-      ESP_LOGD(TAG, "TLV493D config accepted (parity OK)");
-    } else {
-      ESP_LOGW(TAG, "TLV493D parity check failed (byte5=0x%02X) — config may not have been accepted", verify[5]);
-    }
+  // 3. Write 4-byte configuration frame.
+  if (!this->write_bytes(0x00, this->config_, 3)) {
+    ESP_LOGE(TAG, "Configuration write failed (NACK)!");
+    this->error_code_ = COMMUNICATION_FAILED;
+    this->mark_failed();
+    return;
   }
 
   ESP_LOGD(TAG, "TLV493D setup complete (Master Controlled Mode)");
@@ -112,17 +73,11 @@ void TLV493DComponent::update() {
   // Byte 0: Bx[11:4]
   // Byte 1: By[11:4]
   // Byte 2: Bz[11:4]
-  // Byte 3: CH[3:2] FRML[1:0]  (frame counter & channel, NOT a data-ready flag)
+  // Byte 3: TEMP1[7:4] | FRAMECOUNTER[3:2] | CHANNEL[1:0]
   // Byte 4: Bx[3:0] (high nibble) | By[3:0] (low nibble)
-  // Byte 5: PWDN(4) | Temp[3:0] (high nibble) | Bz[3:0] (low nibble)
+  // Byte 5: flags[7:4] | Bz[3:0] (low nibble)
   //
-  // In Master Controlled Mode every read returns a freshly taken measurement,
-  // so no data-ready polling is required.
-
-  // Optionally warn if sensor reports power-down state (bit 4 of byte 5).
-  if (data[5] & 0x10) {
-    ESP_LOGW(TAG, "TLV493D power-down flag set (byte5=0x%02X) — data may be stale", data[5]);
-  }
+  // In Master Controlled Mode every pure read triggers and returns a fresh measurement.
 
   ESP_LOGV(TAG, "Raw: %02X %02X %02X %02X %02X %02X (frame/ch=0x%02X)",
            data[0], data[1], data[2], data[3], data[4], data[5], data[3]);
