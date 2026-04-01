@@ -49,14 +49,27 @@ void TLV493DComponent::setup() {
            this->config_[0], this->config_[1], this->config_[2],
            (this->config_[0] & 0x80) ? "1" : "0");
 
-  // 4. Write configuration. The device requires the I2C write to begin with
-  //    the register-address pointer byte (0x00) before the 3 config bytes.
-  //    Use write_bytes() which prepends the register address automatically.
-  if (!this->write_bytes(0x00, this->config_, 3)) {
-    ESP_LOGE(TAG, "Configuration write failed (NACK)!");
-    this->error_code_ = COMMUNICATION_FAILED;
-    this->mark_failed();
-    return;
+  // 4. Write configuration: 3-byte raw write (MOD1, MOD2, MOD3) with no register
+  //    address prefix byte. A leading 0x00 would be parsed by the sensor as
+  //    MOD1=0x00 (power-down), so write() must be used here, not write_bytes().
+  bool write_ok = false;
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    if (this->write(this->config_, 3)) {
+      write_ok = true;
+      break;
+    }
+    ESP_LOGW(TAG, "Config write attempt %d NACK, retrying...", attempt);
+  }
+  if (!write_ok) {
+    // Fallback: zero out reserved bytes, keep MOD1 (mode + parity).
+    uint8_t fallback[3] = {this->config_[0], 0x00, 0x00};
+    ESP_LOGW(TAG, "Trying fallback config: %02X 00 00", fallback[0]);
+    if (!this->write(fallback, 3)) {
+      ESP_LOGE(TAG, "Configuration write failed (NACK) after retries!");
+      this->error_code_ = COMMUNICATION_FAILED;
+      this->mark_failed();
+      return;
+    }
   }
 
   ESP_LOGD(TAG, "TLV493D setup complete (Master Controlled Mode)");
@@ -122,9 +135,6 @@ void TLV493DComponent::update() {
     if (heading < 0) heading += 360.0f;
     this->heading_sensor_->publish_state(heading);
   }
-
-  ESP_LOGV(TAG, "Raw Hex: %02X %02X %02X %02X %02X %02X", 
-           data[0], data[1], data[2], data[3], data[4], data[5]);
 }
 
 }  // namespace tlv493d
