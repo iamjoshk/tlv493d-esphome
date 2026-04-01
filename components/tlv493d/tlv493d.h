@@ -31,6 +31,12 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
   TLV493DDatarate datarate_{TLV493D_DATARATE_75_0_HZ};
   uint8_t config_[3] = {0x05, 0x00, 0x00};
   uint8_t last_frame_counter_{0xFF};  // 0xFF = sentinel (no previous read)
+  // EMA smoothing (alpha=0.2) applied before publish to reduce ±1LSB (98µT) quantization noise.
+  // This ensures the tronikos on_raw_value detection algorithm sees smooth values.
+  float ema_x_{NAN};
+  float ema_y_{NAN};
+  float ema_z_{NAN};
+  static constexpr float EMA_ALPHA = 0.2f;
   sensor::Sensor *x_sensor_{nullptr};
   sensor::Sensor *y_sensor_{nullptr};
   sensor::Sensor *z_sensor_{nullptr};

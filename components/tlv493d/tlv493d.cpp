@@ -101,18 +101,31 @@ void TLV493DComponent::update() {
   float y = raw_y * 98.0f;
   float z = raw_z * 98.0f;
 
-  if (this->x_sensor_ != nullptr) this->x_sensor_->publish_state(x);
-  if (this->y_sensor_ != nullptr) this->y_sensor_->publish_state(y);
-  if (this->z_sensor_ != nullptr) this->z_sensor_->publish_state(z);
+  // Apply EMA smoothing to reduce ±1 LSB (98 µT) quantization noise before publishing.
+  // on_raw_value in ESPHome fires from publish_state(), so the tronikos detection
+  // algorithm sees these smoothed values directly.
+  if (std::isnan(this->ema_x_)) {
+    this->ema_x_ = x;
+    this->ema_y_ = y;
+    this->ema_z_ = z;
+  } else {
+    this->ema_x_ = EMA_ALPHA * x + (1.0f - EMA_ALPHA) * this->ema_x_;
+    this->ema_y_ = EMA_ALPHA * y + (1.0f - EMA_ALPHA) * this->ema_y_;
+    this->ema_z_ = EMA_ALPHA * z + (1.0f - EMA_ALPHA) * this->ema_z_;
+  }
+
+  if (this->x_sensor_ != nullptr) this->x_sensor_->publish_state(this->ema_x_);
+  if (this->y_sensor_ != nullptr) this->y_sensor_->publish_state(this->ema_y_);
+  if (this->z_sensor_ != nullptr) this->z_sensor_->publish_state(this->ema_z_);
 
   if (this->heading_sensor_ != nullptr) {
-    float heading = atan2f(y, x) * 180.0f / M_PI;
+    float heading = atan2f(this->ema_y_, this->ema_x_) * 180.0f / M_PI;
     if (heading < 0) heading += 360.0f;
     this->heading_sensor_->publish_state(heading);
   }
 
   if (this->magnitude_sensor_ != nullptr) {
-    float magnitude = sqrtf(x * x + y * y + z * z);
+    float magnitude = sqrtf(this->ema_x_ * this->ema_x_ + this->ema_y_ * this->ema_y_ + this->ema_z_ * this->ema_z_);
     this->magnitude_sensor_->publish_state(magnitude);
   }
 }
