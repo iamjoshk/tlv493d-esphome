@@ -18,55 +18,48 @@ void TLV493DComponent::setup() {
     return;
   }
 
-  // 2. Prepare Configuration
-  // Use datarate mapping here; default is 0x05 low-power 10Hz.
-  // The TLV493D datasheet indicates byte0 MOD1 + parity, byte1=MOD2, byte2=MOD3.
-  this->config_[0] = 0x05;
-  this->config_[1] = factory_data[8];
-  this->config_[2] = factory_data[9];
+  ESP_LOGD(TAG, "TLV493D factory bytes[7..9]: %02X %02X %02X", factory_data[7], factory_data[8], factory_data[9]);
 
-  ESP_LOGD(TAG, "TLV493D factory load: %02X %02X", factory_data[8], factory_data[9]);
-  // Data rate should be selectable via set_datarate (future expansion). A mapping
-  // can be added here once the exact MOD1 bit encoding is confirmed.
+  // 2. Prepare Configuration for Master Controlled Mode (MCM).
+  // In MCM (FAST=1, LOWPOWER=1) the sensor takes a fresh measurement on every
+  // I2C read, so no data-ready polling is needed.
+  //
+  // Register layout (TLV493D-A1B6 User Manual, Table 2):
+  //   MOD1 = config[0]: FP(7) | ADDR(6:5) | RES1(4:3) | INT(2) | FAST(1) | LOWPOWER(0)
+  //   MOD2 = config[1]: factory_data[8] (must be preserved verbatim)
+  //   MOD3 = config[2]: factory_data[9] bits [4:0] (lower 5 bits only)
+  uint8_t res1_bits = (factory_data[7] & 0x18);  // bits 4:3, keep in position
+  this->config_[0] = res1_bits | 0x03;            // RES1 | FAST=1 | LOWPOWER=1
+  this->config_[1] = factory_data[8];             // MOD2: reserved, must be preserved
+  this->config_[2] = factory_data[9] & 0x1F;      // MOD3: reserved bits [4:0] only
 
-  // 3. Calculate Parity (Critical for A1B6)
-  // The FP (Frame Parity) bit is Bit 7 of the first config byte
-  // and must be even parity of the 23 other bits.
+  // 3. Compute even parity over all 23 non-parity bits and set bit 7 of config[0].
   uint8_t parity = 0;
   for (int i = 0; i < 3; i++) {
     for (int bit = 0; bit < 8; bit++) {
-      if (i == 0 && bit == 7) continue; // Skip parity bit.
+      if (i == 0 && bit == 7) continue;  // skip parity bit itself
       if ((this->config_[i] >> bit) & 0x01) parity++;
     }
   }
   if (parity % 2 != 0) {
-    this->config_[0] |= 0x80; // Set Frame Parity bit
+    this->config_[0] |= 0x80;  // set FP to achieve even parity
   }
 
-  // 4. Send Wake-up/Mode Set command
-  bool wakeup_success = false;
-  for (int attempt = 1; attempt <= 3; attempt++) {
-    if (this->write(this->config_, 3)) {
-      wakeup_success = true;
-      break;
-    }
-    ESP_LOGW(TAG, "Wake-up command attempt %d failed (NACK), retrying...", attempt);
+  ESP_LOGD(TAG, "TLV493D config: %02X %02X %02X (parity=%s)",
+           this->config_[0], this->config_[1], this->config_[2],
+           (this->config_[0] & 0x80) ? "1" : "0");
+
+  // 4. Write configuration. The device requires the I2C write to begin with
+  //    the register-address pointer byte (0x00) before the 3 config bytes.
+  //    Use write_bytes() which prepends the register address automatically.
+  if (!this->write_bytes(0x00, this->config_, 3)) {
+    ESP_LOGE(TAG, "Configuration write failed (NACK)!");
+    this->error_code_ = COMMUNICATION_FAILED;
+    this->mark_failed();
+    return;
   }
 
-  if (!wakeup_success) {
-    // last fallback: try default MOD2/MOD3 zero
-    uint8_t fallback_cfg[3] = {this->config_[0], 0x00, 0x00};
-    ESP_LOGW(TAG, "TLV493D wake-up fallback (MOD2/MOD3 zero): %02X %02X %02X", fallback_cfg[0], fallback_cfg[1], fallback_cfg[2]);
-    if (!this->write(fallback_cfg, 3)) {
-      ESP_LOGE(TAG, "Wake-up command failed (NACK) after retries and fallback!");
-      this->error_code_ = COMMUNICATION_FAILED;
-      this->mark_failed();
-      return;
-    }
-    ESP_LOGW(TAG, "TLV493D fallback write succeeded");
-  }
-
-  ESP_LOGD(TAG, "TLV493D initialized with parity bit: %s", (this->config_[0] & 0x80) ? "1" : "0");
+  ESP_LOGD(TAG, "TLV493D setup complete (Master Controlled Mode)");
 }
 
 void TLV493DComponent::dump_config() {
@@ -87,30 +80,24 @@ void TLV493DComponent::update() {
     return;
   }
 
-  // Data Map for TLV493D-A1B6:
-  // Reg 0: Bx [11:4]
-  // Reg 1: By [11:4]
-  // Reg 2: Bz [11:4]
-  // Reg 3: status flags
-  // Reg 4: Bx [3:0] (High nibble) + By [3:0] (Low nibble)
-  // Reg 5: Temp [3:0] (High nibble) + Bz [3:0] (Low nibble)
+  // Data Map for TLV493D-A1B6 (User Manual Table 1):
+  // Byte 0: Bx[11:4]
+  // Byte 1: By[11:4]
+  // Byte 2: Bz[11:4]
+  // Byte 3: CH[3:2] FRML[1:0]  (frame counter & channel, NOT a data-ready flag)
+  // Byte 4: Bx[3:0] (high nibble) | By[3:0] (low nibble)
+  // Byte 5: PWDN(4) | Temp[3:0] (high nibble) | Bz[3:0] (low nibble)
+  //
+  // In Master Controlled Mode every read returns a freshly taken measurement,
+  // so no data-ready polling is required.
 
-  const uint8_t status = data[3];
-  const bool data_ready = (status & 0x10) != 0;
-  const bool of_x = (status & 0x01) != 0;
-  const bool of_y = (status & 0x02) != 0;
-  const bool of_z = (status & 0x04) != 0;
-
-  ESP_LOGV(TAG, "Status byte=0x%02X (DRDY=%d, OVF x=%d,y=%d,z=%d)", status, data_ready, of_x, of_y, of_z);
-
-  if (!data_ready) {
-    ESP_LOGD(TAG, "TLV493D data not ready, skipping publish");
-    return;
+  // Optionally warn if sensor reports power-down state (bit 4 of byte 5).
+  if (data[5] & 0x10) {
+    ESP_LOGW(TAG, "TLV493D power-down flag set (byte5=0x%02X) — data may be stale", data[5]);
   }
 
-  if (of_x || of_y || of_z) {
-    ESP_LOGW(TAG, "Magnetometer overflow detected (status=0x%02X)", status);
-  }
+  ESP_LOGV(TAG, "Raw: %02X %02X %02X %02X %02X %02X (frame/ch=0x%02X)",
+           data[0], data[1], data[2], data[3], data[4], data[5], data[3]);
 
   int16_t raw_x = (int16_t)((data[0] << 4) | (data[4] >> 4));
   if (raw_x & 0x0800) raw_x |= 0xF000; // Sign extend
