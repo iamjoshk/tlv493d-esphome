@@ -34,6 +34,7 @@ TLV493DDatarates = {
 CONF_MAGNITUDE = "magnitude"
 CONF_OVERSAMPLING = "oversampling"  # accepted but unused; for compatibility with tronikos framework
 CONF_SMOOTHING_FACTOR = "smoothing_factor"
+CONF_MIN_PUBLISH_DELTA = "min_publish_delta"
 
 field_strength_schema = sensor.sensor_schema(
     unit_of_measurement=UNIT_MICROTESLA,
@@ -59,6 +60,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_MAGNITUDE): field_strength_schema,
             cv.Optional(CONF_OVERSAMPLING): cv.string,  # no-op; accepted for tronikos framework compatibility
             cv.Optional(CONF_SMOOTHING_FACTOR, default=0.0): cv.percentage,
+            cv.Optional(CONF_MIN_PUBLISH_DELTA, default=0.0): cv.float_range(min=0.0),
         }
     )
     .extend(cv.polling_component_schema("60s"))
@@ -80,6 +82,7 @@ async def to_code(config):
 
     cg.add(var.set_datarate(auto_data_rate(config)))
     cg.add(var.set_smoothing_factor(config[CONF_SMOOTHING_FACTOR]))
+    cg.add(var.set_min_publish_delta(config[CONF_MIN_PUBLISH_DELTA]))
     if CONF_FIELD_STRENGTH_X in config:
         sens = await sensor.new_sensor(config[CONF_FIELD_STRENGTH_X])
         cg.add(var.set_x_sensor(sens))

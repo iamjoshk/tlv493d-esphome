@@ -22,6 +22,7 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
 
   void set_datarate(TLV493DDatarate datarate) { datarate_ = datarate; }
   void set_smoothing_factor(float alpha) { ema_alpha_ = alpha; }
+  void set_min_publish_delta(float delta) { min_publish_delta_ = delta; }
   void set_x_sensor(sensor::Sensor *x_sensor) { x_sensor_ = x_sensor; }
   void set_y_sensor(sensor::Sensor *y_sensor) { y_sensor_ = y_sensor; }
   void set_z_sensor(sensor::Sensor *z_sensor) { z_sensor_ = z_sensor; }
@@ -38,6 +39,13 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
   float ema_x_{NAN};
   float ema_y_{NAN};
   float ema_z_{NAN};
+  // Only publish when any axis changes by at least this much (µT) since last publish.
+  // Prevents tronikos on_raw_value from seeing quantization noise (98 µT/LSB on TLV493D).
+  // 0.0 = publish every update (default, standalone use).
+  float min_publish_delta_{0.0f};
+  float last_published_x_{NAN};
+  float last_published_y_{NAN};
+  float last_published_z_{NAN};
   sensor::Sensor *x_sensor_{nullptr};
   sensor::Sensor *y_sensor_{nullptr};
   sensor::Sensor *z_sensor_{nullptr};

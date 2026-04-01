@@ -37,5 +37,8 @@ sensor:
   - id: !extend ${prefix_id}qmc5883l_id
     platform: tlv493d
     smoothing_factor: 20%
+    # Only fire on_raw_value (tronikos detection) when any axis shifts >= 50 µT.
+    # Suppresses 1-LSB quantization noise (98 µT/LSB) from generating false counts at rest.
+    min_publish_delta: 50.0
     # Remove QMC5883L-only temperature sub-sensor (tlv493d does not expose it here)
     temperature: !remove ${prefix_id}qmc5883l_temperature
