@@ -31,7 +31,7 @@ void TLV493DComponent::setup() {
   uint8_t res1_bits = (factory_data[7] & 0x18);  // bits 4:3, keep in position
   this->config_[0] = res1_bits | 0x03;            // RES1 | FAST=1 | LOWPOWER=1
   this->config_[1] = factory_data[8];             // MOD2: reserved, must be preserved
-  this->config_[2] = factory_data[9] & 0x1F;      // MOD3: reserved bits [4:0] only
+  this->config_[2] = (factory_data[9] & 0x1F) | 0x20;  // MOD3: reserved bits [4:0] + PT=1 (parity test enable, bit 5)
 
   // 3. Compute even parity over all 23 non-parity bits and set bit 7 of config[0].
   uint8_t parity = 0;
@@ -72,6 +72,17 @@ void TLV493DComponent::setup() {
     }
   }
 
+  // 5. Read back and verify the parity check bit (bit 5 of read byte 5 = 0x20).
+  //    If zero, the sensor rejected the config write.
+  uint8_t verify[10];
+  if (this->read(verify, 10)) {
+    if (verify[5] & 0x20) {
+      ESP_LOGD(TAG, "TLV493D config accepted (parity OK)");
+    } else {
+      ESP_LOGW(TAG, "TLV493D parity check failed (byte5=0x%02X) — config may not have been accepted", verify[5]);
+    }
+  }
+
   ESP_LOGD(TAG, "TLV493D setup complete (Master Controlled Mode)");
 }
 
@@ -88,7 +99,11 @@ float TLV493DComponent::get_setup_priority() const {
 void TLV493DComponent::update() {
   uint8_t data[6];
   // Read 6 bytes to get X, Y, Z, status and low nibbles.
-  if (!this->read_bytes(0x00, data, 6)) {
+  // In Master Controlled Mode the I2C read transaction itself triggers the next
+  // conversion, so we must issue a pure read (no preceding register-address write).
+  // Using read_bytes(0x00, ...) would send a WRITE(0x00) before the read, which
+  // disrupts the MCM trigger and leaves the FRAMECOUNTER frozen.
+  if (!this->read(data, 6)) {
     ESP_LOGW(TAG, "Read failed!");
     return;
   }
