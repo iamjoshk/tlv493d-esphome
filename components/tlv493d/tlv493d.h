@@ -25,6 +25,7 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
   void set_y_sensor(sensor::Sensor *y_sensor) { y_sensor_ = y_sensor; }
   void set_z_sensor(sensor::Sensor *z_sensor) { z_sensor_ = z_sensor; }
   void set_heading_sensor(sensor::Sensor *heading_sensor) { heading_sensor_ = heading_sensor; }
+  void set_magnitude_sensor(sensor::Sensor *magnitude_sensor) { magnitude_sensor_ = magnitude_sensor; }
 
  protected:
   TLV493DDatarate datarate_{TLV493D_DATARATE_75_0_HZ};
@@ -34,6 +35,7 @@ class TLV493DComponent : public PollingComponent, public i2c::I2CDevice {
   sensor::Sensor *y_sensor_{nullptr};
   sensor::Sensor *z_sensor_{nullptr};
   sensor::Sensor *heading_sensor_{nullptr};
+  sensor::Sensor *magnitude_sensor_{nullptr};
   enum ErrorCode {
     NONE = 0,
     COMMUNICATION_FAILED,

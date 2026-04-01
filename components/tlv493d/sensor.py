@@ -31,6 +31,8 @@ TLV493DDatarates = {
     255: TLV493DDatarate.TLV493D_DATARATE_255_0_HZ,
 }
 
+CONF_MAGNITUDE = "magnitude"
+
 field_strength_schema = sensor.sensor_schema(
     unit_of_measurement=UNIT_MICROTESLA,
     icon=ICON_MAGNET,
@@ -52,6 +54,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_FIELD_STRENGTH_Y): field_strength_schema,
             cv.Optional(CONF_FIELD_STRENGTH_Z): field_strength_schema,
             cv.Optional(CONF_HEADING): heading_schema,
+            cv.Optional(CONF_MAGNITUDE): field_strength_schema,
         }
     )
     .extend(cv.polling_component_schema("60s"))
@@ -84,3 +87,6 @@ async def to_code(config):
     if CONF_HEADING in config:
         sens = await sensor.new_sensor(config[CONF_HEADING])
         cg.add(var.set_heading_sensor(sens))
+    if CONF_MAGNITUDE in config:
+        sens = await sensor.new_sensor(config[CONF_MAGNITUDE])
+        cg.add(var.set_magnitude_sensor(sens))

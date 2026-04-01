@@ -30,9 +30,9 @@ void TLV493DComponent::setup() {
   //
   // 4-byte write frame: [0x00, MOD1, RES2, RES3]
   //   MOD1: FP(7)=1 | ADDR(6:5)=0 | RES1(4:3) | INT(2)=0 | FAST(1)=0 | LP(0)=1
-  this->config_[0] = (factory_data[7] & 0x18) | 0x81;  // RES1 | FP=1 | FAST=0 | LOWPOWER=1
+  this->config_[0] = (factory_data[7] & 0x18) | 0x81;   // RES1 | FP=1 | FAST=0 | LOWPOWER=1
   this->config_[1] = factory_data[8];                    // RES2: must be preserved verbatim
-  this->config_[2] = factory_data[9] & 0x1F;             // RES3: lower 5 bits only
+  this->config_[2] = (factory_data[9] & 0x1F) | 0x40;   // RES3 | LP_Period=1 (bit 6) → 12ms cycle (~83 Hz)
 
   ESP_LOGD(TAG, "TLV493D config: %02X %02X %02X", this->config_[0], this->config_[1], this->config_[2]);
 
@@ -109,6 +109,11 @@ void TLV493DComponent::update() {
     float heading = atan2f(y, x) * 180.0f / M_PI;
     if (heading < 0) heading += 360.0f;
     this->heading_sensor_->publish_state(heading);
+  }
+
+  if (this->magnitude_sensor_ != nullptr) {
+    float magnitude = sqrtf(x * x + y * y + z * z);
+    this->magnitude_sensor_->publish_state(magnitude);
   }
 }
 
