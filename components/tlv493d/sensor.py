@@ -32,6 +32,7 @@ TLV493DDatarates = {
 }
 
 CONF_MAGNITUDE = "magnitude"
+CONF_OVERSAMPLING = "oversampling"  # accepted but unused; for compatibility with tronikos framework
 
 field_strength_schema = sensor.sensor_schema(
     unit_of_measurement=UNIT_MICROTESLA,
@@ -55,6 +56,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_FIELD_STRENGTH_Z): field_strength_schema,
             cv.Optional(CONF_HEADING): heading_schema,
             cv.Optional(CONF_MAGNITUDE): field_strength_schema,
+            cv.Optional(CONF_OVERSAMPLING): cv.string,  # no-op; accepted for tronikos framework compatibility
         }
     )
     .extend(cv.polling_component_schema("60s"))
