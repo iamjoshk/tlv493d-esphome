@@ -20,21 +20,21 @@ DEPENDENCIES = ["i2c"]
 
 tlv493d_ns = cg.esphome_ns.namespace("tlv493d")
 
+# FIXED: Changed MMC5603Component to TLV493DComponent
 TLV493DComponent = tlv493d_ns.class_(
-    "MMC5603Component", cg.PollingComponent, i2c.I2CDevice
+    "TLV493DComponent", cg.PollingComponent, i2c.I2CDevice
 )
 
-
-TLV493DDatarate = tlv493d_ns.enum("MMC5603Datarate")
+# FIXED: Changed MMC5603Datarate to TLV493DDatarate
+TLV493DDatarate = tlv493d_ns.enum("TLV493DDatarate")
 TLV493DDatarates = {
     75: TLV493DDatarate.TLV493D_DATARATE_75_0_HZ,
     150: TLV493DDatarate.TLV493D_DATARATE_150_0_HZ,
     255: TLV493DDatarate.TLV493D_DATARATE_255_0_HZ,
 }
 
-
 field_strength_schema = sensor.sensor_schema(
-    unit_of_measurement="µT",
+    unit_of_measurement=UNIT_MICROTESLA,
     icon=ICON_MAGNET,
     accuracy_decimals=1,
     state_class=STATE_CLASS_MEASUREMENT,
@@ -60,7 +60,6 @@ CONFIG_SCHEMA = (
     .extend(i2c.i2c_device_schema(0x5E))
 )
 
-
 def auto_data_rate(config):
     interval_msec = config[CONF_UPDATE_INTERVAL].total_milliseconds
     interval_hz = 1000.0 / interval_msec
@@ -68,7 +67,6 @@ def auto_data_rate(config):
         if float(datarate) >= interval_hz:
             return TLV493DDatarates[datarate]
     return TLV493DDatarates[75]
-
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
