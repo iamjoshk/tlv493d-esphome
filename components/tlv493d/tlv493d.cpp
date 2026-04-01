@@ -22,10 +22,10 @@ void TLV493DComponent::setup() {
   // Use datarate mapping here; default is 0x05 low-power 10Hz.
   // The TLV493D datasheet indicates byte0 MOD1 + parity, byte1=MOD2, byte2=MOD3.
   this->config_[0] = 0x05;
-  // Keep mod2/mod3 only low nibble from factory value (reserved bits), as per datasheet.
-  this->config_[1] = factory_data[8] & 0x0F;
-  this->config_[2] = factory_data[9] & 0x0F;
+  this->config_[1] = factory_data[8];
+  this->config_[2] = factory_data[9];
 
+  ESP_LOGD(TAG, "TLV493D factory load: %02X %02X", factory_data[8], factory_data[9]);
   // Data rate should be selectable via set_datarate (future expansion). A mapping
   // can be added here once the exact MOD1 bit encoding is confirmed.
 
@@ -44,11 +44,26 @@ void TLV493DComponent::setup() {
   }
 
   // 4. Send Wake-up/Mode Set command
-  if (!this->write(this->config_, 3)) {
-    ESP_LOGE(TAG, "Wake-up command failed (NACK)!");
-    this->error_code_ = COMMUNICATION_FAILED;
-    this->mark_failed();
-    return;
+  bool wakeup_success = false;
+  for (int attempt = 1; attempt <= 3; attempt++) {
+    if (this->write(this->config_, 3)) {
+      wakeup_success = true;
+      break;
+    }
+    ESP_LOGW(TAG, "Wake-up command attempt %d failed (NACK), retrying...", attempt);
+  }
+
+  if (!wakeup_success) {
+    // last fallback: try default MOD2/MOD3 zero
+    uint8_t fallback_cfg[3] = {this->config_[0], 0x00, 0x00};
+    ESP_LOGW(TAG, "TLV493D wake-up fallback (MOD2/MOD3 zero): %02X %02X %02X", fallback_cfg[0], fallback_cfg[1], fallback_cfg[2]);
+    if (!this->write(fallback_cfg, 3)) {
+      ESP_LOGE(TAG, "Wake-up command failed (NACK) after retries and fallback!");
+      this->error_code_ = COMMUNICATION_FAILED;
+      this->mark_failed();
+      return;
+    }
+    ESP_LOGW(TAG, "TLV493D fallback write succeeded");
   }
 
   ESP_LOGD(TAG, "TLV493D initialized with parity bit: %s", (this->config_[0] & 0x80) ? "1" : "0");
