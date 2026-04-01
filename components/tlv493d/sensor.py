@@ -8,8 +8,12 @@ from esphome.const import (
     CONF_FIELD_STRENGTH_Z,
     CONF_HEADING,
     CONF_ID,
+    CONF_TEMPERATURE,
+    DEVICE_CLASS_TEMPERATURE,
     ICON_MAGNET,
+    ICON_THERMOMETER,
     STATE_CLASS_MEASUREMENT,
+    UNIT_CELSIUS,
     UNIT_MICROTESLA,
     UNIT_DEGREES,
     ICON_SCREEN_ROTATION,
@@ -47,6 +51,13 @@ heading_schema = sensor.sensor_schema(
     icon=ICON_SCREEN_ROTATION,
     accuracy_decimals=1,
 )
+temperature_schema = sensor.sensor_schema(
+    unit_of_measurement=UNIT_CELSIUS,
+    icon=ICON_THERMOMETER,
+    accuracy_decimals=1,
+    state_class=STATE_CLASS_MEASUREMENT,
+    device_class=DEVICE_CLASS_TEMPERATURE,
+)
 
 CONFIG_SCHEMA = (
     cv.Schema(
@@ -61,6 +72,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_OVERSAMPLING): cv.string,  # no-op; accepted for tronikos framework compatibility
             cv.Optional(CONF_SMOOTHING_FACTOR, default=0.0): cv.percentage,
             cv.Optional(CONF_MIN_PUBLISH_DELTA, default=0.0): cv.float_range(min=0.0),
+            cv.Optional(CONF_TEMPERATURE): temperature_schema,
         }
     )
     .extend(cv.polling_component_schema("60s"))
@@ -98,3 +110,6 @@ async def to_code(config):
     if CONF_MAGNITUDE in config:
         sens = await sensor.new_sensor(config[CONF_MAGNITUDE])
         cg.add(var.set_magnitude_sensor(sens))
+    if CONF_TEMPERATURE in config:
+        sens = await sensor.new_sensor(config[CONF_TEMPERATURE])
+        cg.add(var.set_temperature_sensor(sens))

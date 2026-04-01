@@ -72,9 +72,9 @@ void TLV493DComponent::update() {
   // Byte 0: Bx[11:4]
   // Byte 1: By[11:4]
   // Byte 2: Bz[11:4]
-  // Byte 3: TEMP1[7:4] | FRAMECOUNTER[3:2] | CHANNEL[1:0]
+  // Byte 3: T[11:8] (high nibble) | FRAMECOUNTER[3:2] | CHANNEL[1:0]
   // Byte 4: Bx[3:0] (high nibble) | By[3:0] (low nibble)
-  // Byte 5: flags[7:4] | Bz[3:0] (low nibble)
+  // Byte 5: T[7:4] (high nibble) | Bz[3:0] (low nibble)
 
   // Check FRAMECOUNTER (bits 3:2 of byte 3) to detect stale data.
   uint8_t frame = (data[3] & 0x0C) >> 2;
@@ -95,6 +95,12 @@ void TLV493DComponent::update() {
 
   int16_t raw_z = (int16_t)((data[2] << 4) | (data[5] & 0x0F));
   if (raw_z & 0x0800) raw_z |= 0xF000;
+
+  // Temperature: T[11:8] in byte 3 high nibble, T[7:4] in byte 5 high nibble, T[3:0] always 0.
+  // Conversion per TLV493D-A1B6 datasheet: T(°C) = (raw - 340) / 11.6 + 25
+  int16_t raw_t = (int16_t)(((data[3] & 0xF0) << 4) | (data[5] & 0xF0));
+  if (raw_t & 0x0800) raw_t |= 0xF000;  // sign extend 12-bit
+  float temp_c = (raw_t - 340.0f) / 11.6f + 25.0f;
 
   // Convert to uT (Sensitivity is 0.098 mT/LSB -> 98.0 uT/LSB)
   float x = raw_x * 98.0f;
@@ -145,6 +151,11 @@ void TLV493DComponent::update() {
   if (this->magnitude_sensor_ != nullptr) {
     float magnitude = sqrtf(this->ema_x_ * this->ema_x_ + this->ema_y_ * this->ema_y_ + this->ema_z_ * this->ema_z_);
     this->magnitude_sensor_->publish_state(magnitude);
+  }
+
+  // Temperature is published unconditionally (not gated by min_publish_delta).
+  if (this->temperature_sensor_ != nullptr) {
+    this->temperature_sensor_->publish_state(temp_c);
   }
 }
 
