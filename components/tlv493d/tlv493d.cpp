@@ -58,12 +58,12 @@ float TLV493DComponent::get_setup_priority() const {
 }
 
 void TLV493DComponent::update() {
-  uint8_t data[6];
-  // Read 6 bytes to get X, Y, Z, status and low nibbles.
+  uint8_t data[7];
+  // Read 7 bytes to get X, Y, Z, status, low nibbles, and temperature.
   // The TLV493D requires a preceding 0x00 register-address byte before every read.
   // Pure read() with 0 write bytes NACKs on this device via ESPHome's I2C IDF backend.
   // read_bytes(0x00, ...) sends [WRITE 0x00][READ], which the sensor ACKs and returns data.
-  if (!this->read_bytes(0x00, data, 6)) {
+  if (!this->read_bytes(0x00, data, 7)) {
     ESP_LOGW(TAG, "Read failed!");
     return;
   }
@@ -74,7 +74,8 @@ void TLV493DComponent::update() {
   // Byte 2: Bz[11:4]
   // Byte 3: T[11:8] (high nibble) | FRAMECOUNTER[3:2] | CHANNEL[1:0]
   // Byte 4: Bx[3:0] (high nibble) | By[3:0] (low nibble)
-  // Byte 5: T[7:4] (high nibble) | Bz[3:0] (low nibble)
+  // Byte 5: PD_FLAG (bit 4) | Bz[3:0] (low nibble)
+  // Byte 6: T[7:0]
 
   // Check FRAMECOUNTER (bits 3:2 of byte 3) to detect stale data.
   uint8_t frame = (data[3] & 0x0C) >> 2;
@@ -84,8 +85,8 @@ void TLV493DComponent::update() {
   }
   this->last_frame_counter_ = frame;
 
-  ESP_LOGV(TAG, "Raw: %02X %02X %02X %02X %02X %02X (frame/ch=0x%02X)",
-           data[0], data[1], data[2], data[3], data[4], data[5], data[3]);
+  ESP_LOGV(TAG, "Raw: %02X %02X %02X %02X %02X %02X %02X (frame/ch=0x%02X)",
+           data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[3]);
 
   int16_t raw_x = (int16_t)((data[0] << 4) | (data[4] >> 4));
   if (raw_x & 0x0800) raw_x |= 0xF000; // Sign extend
@@ -96,11 +97,12 @@ void TLV493DComponent::update() {
   int16_t raw_z = (int16_t)((data[2] << 4) | (data[5] & 0x0F));
   if (raw_z & 0x0800) raw_z |= 0xF000;
 
-  // Temperature: T[11:8] in byte 3 high nibble, T[7:4] in byte 5 high nibble, T[3:0] always 0.
-  // Conversion per TLV493D-A1B6 datasheet: T(°C) = (raw - 340) / 11.6 + 25
-  int16_t raw_t = (int16_t)(((data[3] & 0xF0) << 4) | (data[5] & 0xF0));
-  if (raw_t & 0x0800) raw_t |= 0xF000;  // sign extend 12-bit
-  float temp_c = (raw_t - 340.0f) / 11.6f + 25.0f;
+  // Temperature: T[11:8] in byte 3 high nibble (R_TEMP1), T[7:0] in byte 6 (R_TEMP2).
+  // Per official Infineon TLV493D Arduino library (Tlv493d_conf.h + Tlv493d.cpp):
+  //   raw = ((data[3] & 0xF0) >> 4) << 8 | data[6]
+  //   T(°C) = (raw - TLV493D_TEMP_OFFSET) * TLV493D_TEMP_MULT = (raw - 315) * 1.1
+  int16_t raw_t = (int16_t)(((data[3] & 0xF0) << 4) | data[6]);
+  float temp_c = (raw_t - 315.0f) * 1.1f;
 
   // Convert to uT (Sensitivity is 0.098 mT/LSB -> 98.0 uT/LSB)
   float x = raw_x * 98.0f;
