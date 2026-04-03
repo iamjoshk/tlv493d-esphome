@@ -98,11 +98,11 @@ void TLV493DComponent::update() {
   if (raw_z & 0x0800) raw_z |= 0xF000;
 
   // Temperature: T[11:8] in byte 3 high nibble (R_TEMP1), T[7:0] in byte 6 (R_TEMP2).
-  // Per official Infineon TLV493D Arduino library (Tlv493d_conf.h + Tlv493d.cpp):
-  //   raw = ((data[3] & 0xF0) >> 4) << 8 | data[6]
-  //   T(°C) = (raw - TLV493D_TEMP_OFFSET) * TLV493D_TEMP_MULT = (raw - 315) * 1.1
+  // Per TLV493D-A1B6 datasheet: TRAW = TOFFSET + TSENS * TMEAS
+  //   TOFFSET = 340 (raw value at 0°C), TSENS = 1.1 LSB/°C
+  //   Solving for TMEAS: T(°C) = (TRAW - 340) / 1.1
   int16_t raw_t = (int16_t)(((data[3] & 0xF0) << 4) | data[6]);
-  float temp_c = (raw_t - 315.0f) * 1.1f;
+  float temp_c = (raw_t - 340.0f) / 1.1f;
 
   // Convert to uT (Sensitivity is 0.098 mT/LSB -> 98.0 uT/LSB)
   float x = raw_x * 98.0f;
