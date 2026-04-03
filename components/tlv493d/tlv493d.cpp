@@ -99,10 +99,10 @@ void TLV493DComponent::update() {
 
   // Temperature: T[11:8] in byte 3 high nibble (R_TEMP1), T[7:0] in byte 6 (R_TEMP2).
   // Per TLV493D-A1B6 datasheet: TRAW = TOFFSET + TSENS * TMEAS
-  //   TOFFSET = 340 (raw value at 0°C), TSENS = 1.1 LSB/°C
-  //   Solving for TMEAS: T(°C) = (TRAW - 340) / 1.1
+  //   TSENS = 1.1 LSB/°C. TOFFSET empirically determined as 349.
+  //   Solving for TMEAS: T(°C) = (TRAW - 349) / 1.1
   int16_t raw_t = (int16_t)(((data[3] & 0xF0) << 4) | data[6]);
-  float temp_c = (raw_t - 340.0f) / 1.1f;
+  float temp_c = (raw_t - 349.0f) / 1.1f;
 
   // Convert to uT (Sensitivity is 0.098 mT/LSB -> 98.0 uT/LSB)
   float x = raw_x * 98.0f;
